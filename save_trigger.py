@@ -5,9 +5,12 @@ Created on Mon Sep 14 12:40:28 2020
 @author: rober
 """
 
+from copy import deepcopy
 
 class SaveTrigger(object):
     def __init__(self):
+        super(SaveTrigger, self).__init__()
+        
         self._auto_keys = list()
         
         #Store these separately.
@@ -24,29 +27,46 @@ class SaveTrigger(object):
         
         #These are external vars, which we put in _vals
         #and store history for
-        self._vals.get(name, list()).append(value)
+        if name in self._vals:
+            self._vals[name].append(value)
+            return
+        else:
+            self._vals[name] = [value]
     
-    def __getattribute__(self, name):
-        #These are internal vars, which should function normally
-        if name[0] == '_':
-            return super(SaveTrigger, self).__getattribute__(name)
+    def __getattr__(self, name):
         
-        #There are external vars, which we store in _vals
-        #By default, use the most recent value
+        
         return self._vals[name][-1]
+    
+    def _get_prev(self, name, prev_level=1):
+        return self._vals[name][-1-prev_level]
     
     #This will probably get really expensive eventually
     #so I'll have to make it better sometime
-    def _make_copy(self):
-        copy = SaveTrigger()
+    def _make_save(self):
+        save = Save()
         
-        copy._auto_keys = self._auto_keys.copy()
-        copy._vals = self._vals.copy()
-        copy._states_from_times = self._states_from_times.copy()
+        save._auto_keys = deepcopy(self._auto_keys)
+        save._vals = deepcopy(self._vals)
+        save._states_from_times = deepcopy(self._states_from_times)
         
-        return copy
+        return save
     
-    def save(self, key):
+    def prev(self, prev_level=1):
+        return PrevWrapper(self, prev_level=prev_level)
+    
+    def at(self, key):
+        save = self._states_from_times[key]
+        
+        result = SaveTrigger()
+        
+        result._auto_keys = save._auto_keys
+        result._vals = save._vals
+        result._states_from_times = save._states_from_times
+        
+        return result
+    
+    def save(self, key=None):
         """
         Save the current state under the given key.
         
@@ -56,15 +76,23 @@ class SaveTrigger(object):
         Return:
             key
         """
-        pass
-        #self._state
-    
-    #This is a separate method so that None will be a valid key.
-    def save(self):
-        """
-        Save the current state under an auto-generated key.
+        if key == None:
+            key = object()
+            self._auto_keys.append(key)
+            
+        self._states_from_times[key] = self._make_save()
+        return key
+
+class Save(object):
+    pass
+
+class PrevWrapper(object):
+    def __init__(self, wrapped, prev_level=1):
+        super(PrevWrapper, self).__init__()
         
-        Return:
-            The auto-generated key.
-        """
-        pass
+        self._wrapped = wrapped
+        self._prev_level = prev_level
+    
+    def __getattr__(self, name):
+        return self._wrapped._get_prev(name, prev_level=self._prev_level)
+    
